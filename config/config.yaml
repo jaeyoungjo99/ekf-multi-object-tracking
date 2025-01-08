@@ -1,0 +1,48 @@
+topic_name:
+  vehicle_state: /app/loc/vehicle_state
+  lidar_objects: /hmi/perc/jsk_pillar_objects
+  
+configure:
+  input_localization: 0  # 0: None, 1: CAN, 2: Vehicle State, 3: Novatel
+  output_local_coord: true  # false: Output global coordinate, true: Output local coordinate
+  output_period_lidar: false  # false: Motion synced output, true: LiDAR synced output
+  output_confirmed_track: true  # false: output all track, true: output confirmed track
+  use_predefined_ref_point: true  # false: use initial lat lon as ref, true: use defined ref
+  reference_lat: 37.23855064
+  reference_lon: 126.77253029
+  reference_height: 0.0
+  cal_detection_individual_time: true  # LiDAR Motion compensation
+  lidar_rotation_period: 0.1
+  lidar_sync_scan_start: false  # false: Sync lidar time to scan end, true: Sync lidar time to scan start
+  max_association_dist_m: 5.0
+  prediction_model: 1  # 0: CV, 1: CTRV, 2: CA, 3: CTRA
+  system_noise_std_xy_m: 0.01
+  system_noise_std_yaw_deg: 0.5
+  system_noise_std_vx_vy_ms: 1.0
+  system_noise_std_yaw_rate_degs: 1.0
+  system_noise_std_ax_ay_ms2: 0.6
+  meas_noise_std_xy_m: 0.6
+  meas_noise_std_yaw_deg: 10.00
+  dimension_filter_alpha: 0.3  # 0.0: High filtering ~ 1.0: Use Current size
+  use_kinematic_model: false  # Align velocity direction to heading.
+  use_yaw_rate_filtering: true  # Restrict Yawrate based on velocity
+  max_steer_deg: 30.0
+  visualize_mesh: false
+
+vehicle_origin:
+  vehicle_origin: 0  # 0: Rear Axle, 1: C.G.
+
+
+rear_to_main_lidar:
+  parent_frame_id: ego_frame
+  child_frame_id: velodyne
+  transform_xyz_m: [1.2, 0.0, 1.88]
+  rotation_rpy_deg: [0.0, 1.0, 0.5]
+
+cg_to_main_lidar:
+  parent_frame_id: ego_frame
+  child_frame_id: velodyne
+  transform_xyz_m: [-0.31, 0.0, 1.88]
+  rotation_rpy_deg: [0.0, 1.0, 0.5]
+  
+

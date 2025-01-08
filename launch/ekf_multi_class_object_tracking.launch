@@ -1,0 +1,6 @@
+<!-- -->
+<launch>
+  <rosparam file="$(find ekf_multi_object_tracking)/config/config.yaml" command="load"/>   
+  <param name="use_sim_time" value="true" />
+  <node pkg="ekf_multi_object_tracking" type="ekf_multi_object_tracking" name="ekf_multi_object_tracking" output="screen" respawn="false"/>
+</launch>
