@@ -44,7 +44,7 @@
 #define S_AX 6
 #define S_AY 7
 
-// 트랙 최대 속도, 가속도
+// Maximum track velocity and acceleration
 #define MAX_TRACK_VEL 60.0
 #define MAX_TRACK_ACC 25.0
 
@@ -125,16 +125,16 @@ struct TrackStruct {
         state_cov.diagonal().array() = INIT_COV_VAL;
     }
 
-    // detection 된 횟수 업데이트
+    // Update the number of detections
     void updateDetectionCount(bool associated) {
-        // 배열을 한 칸씩 오른쪽으로 밀고, 새로운 값을 추가
+        // Shift the array one position to the right and add the new value
         for (int i = MAX_HISTORY - 1; i > 0; --i) {
             detection_arr[i] = detection_arr[i - 1];
         }
         detection_arr[0] = associated;
     }
 
-    // 최근 MAX_HISTORY 동안 detection 된 횟수 반환
+    // Return the number of detections in the recent MAX_HISTORY
     int countDetectionNum() {
         int detection_count = 0;
         for (int i = MAX_HISTORY - 1; i >= 0; --i) {
@@ -145,16 +145,16 @@ struct TrackStruct {
         return detection_count;
     }
 
-    // 트랙이 outdated 인지 확인
+    // Check if the track is outdated
     bool isOutdated() {
-        // 최근 MAX_HISTORY 동안 detection 된 횟수가 MAX_HISTORY_FOR_OUTDATED 회 이하면 outdated
+        // If the number of detections in the recent MAX_HISTORY is less than MAX_HISTORY_FOR_OUTDATED, it is outdated
         if (countDetectionNum() < std::min(age, static_cast<unsigned int>(MAX_HISTORY)) - MAX_HISTORY_FOR_OUTDATED) {
             return true;
         }
         return false;
     }
 
-    // 트랙의 대표 클래스 확률 업데이트
+    // Update the representative class probability of the track
     void updateClassScore(int cur_class) {
         double alpha = 0.2;
         for (int i = 0; i < CLASS_NUM; i++) {
@@ -167,7 +167,7 @@ struct TrackStruct {
         }
     }
 
-    // 트랙의 대표 클래스 반환
+    // Return the representative class of the track
     int getRepClass() {
         int rep_class = 0;
         double rep_prob = 0.0;
@@ -180,7 +180,7 @@ struct TrackStruct {
         return rep_class;
     }
 
-    // 트랙의 대표 클래스 확률 반환
+    // Return the representative class probability of the track
     double getRepClassProb() {
         int rep_class = 0;
         double rep_prob = 0.0;
@@ -193,7 +193,7 @@ struct TrackStruct {
         return rep_prob;
     }
 
-    // 트랙 초기화
+    // Reset the track
     void reset() {
         update_time = 0.0;
         detection_confidence = 0.0;
@@ -310,13 +310,13 @@ private:
     // Private Variables
 
     std::array<mc_mot::TrackStruct, MAX_TRACKS> all_tracks_;
-    int cur_track_id_{0}; // 현재 track id
+    int cur_track_id_{0}; // Current track id
 
-    double recent_timestamp_{0.0}; // 최근 timestamp
+    double recent_timestamp_{0.0}; // Recent timestamp
 
-    Eigen::Matrix8_8d Q_; // 시스템 노이즈 공분산 행렬
-    Eigen::Matrix3d R_;   // 측정 노이즈 공분산 행렬
-    Eigen::Matrix3_8d H_; // 측정 행렬
+    Eigen::Matrix8_8d Q_; // System noise covariance matrix
+    Eigen::Matrix3d R_;   // Measurement noise covariance matrix
+    Eigen::Matrix3_8d H_; // Measurement matrix
 
     // config
     MultiClassObjectTrackingConfig config_;

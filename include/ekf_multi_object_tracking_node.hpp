@@ -192,7 +192,6 @@ private:
     inline void CallbackBoundingBoxArray(const jsk_recognition_msgs::BoundingBoxArray::ConstPtr& msg) {
         std::lock_guard<std::mutex> lock(mutex_lidar_objects_);
 
-        // 예시: BoundingBoxArray 메시지를 i_lidar_objects_로 변환하는 로직
         // i_lidar_objects_.header = msg->header;
         i_lidar_objects_.header.frame_id = msg->header.frame_id;
         i_lidar_objects_.header.seq = msg->header.seq;
@@ -281,7 +280,6 @@ private:
     //     lidar_state_.v_x = i_novatel_inspvax_.east_velocity;
     //     lidar_state_.v_y = i_novatel_inspvax_.north_velocity;
 
-    //     // TODO: INSPVAX 에는 yaw rate, a_x, a_y 가 없음
     //     lidar_state_.yaw_rate = 0.0;
     //     lidar_state_.a_x = 0.0;
     //     lidar_state_.a_y = 0.0;

@@ -355,7 +355,7 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
     o_vis_track_info_.markers.clear();
 
     if (config_.visualize_mesh == true) {
-        // EGO STL 시각화
+        // Visualize EGO STL
         o_vis_ego_stl_.header.frame_id = "velodyne";
         o_vis_ego_stl_.ns = "ego_stl";
         o_vis_ego_stl_.id = 0;
@@ -369,7 +369,7 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
         o_vis_ego_stl_.pose.position.z = -cfg_vec_d_ego_to_lidar_xyz_m_[2];
 
         tf2::Quaternion quat;
-        quat.setRPY(0, 0, M_PI); // Roll=0, Pitch=0, Yaw=180도(π 라디안)
+        quat.setRPY(0, 0, M_PI); // Roll=0, Pitch=0, Yaw=180 degrees (π radians)
         quat.normalize();
 
         o_vis_ego_stl_.pose.orientation.x = quat.x();
@@ -381,7 +381,7 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
         o_vis_ego_stl_.scale.y = 1.0;
         o_vis_ego_stl_.scale.z = 1.0;
 
-        // 색상을 설정합니다.
+        // Set color
         o_vis_ego_stl_.color.r = 1.0f;
         o_vis_ego_stl_.color.g = 1.0f;
         o_vis_ego_stl_.color.b = 1.0f;
@@ -436,7 +436,7 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
             vis_track_info.action = visualization_msgs::Marker::ADD;
             vis_track_info.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
             // vis_track_info.lifetime = ros::Duration(0.1);
-
+           
             std::ostringstream display_text;
             display_text << "ID (" << track.track_id << ") score: " << std::fixed << std::setprecision(2)
                          << std::round(track.detection_confidence * 100.0) / 100.0
@@ -487,7 +487,7 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
             cov_marker.pose.orientation.z = 0.0;
             cov_marker.pose.orientation.w = 1.0;
 
-            // Covariance matrix의 eigenvalues와 eigenvectors 계산
+            // Calculate eigenvalues and eigenvectors of the covariance matrix
             Eigen::Matrix2d cov_matrix;
             cov_matrix << track.state_cov(0, 0), track.state_cov(0, 1), track.state_cov(1, 0), track.state_cov(1, 1);
 
@@ -495,19 +495,19 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
             Eigen::Vector2d eigenvalues = eigensolver.eigenvalues();
             Eigen::Matrix2d eigenvectors = eigensolver.eigenvectors();
 
-            // Eigenvalues를 사용하여 ellipse의 크기를 설정
-            cov_marker.scale.x = 2 * std::sqrt(eigenvalues[0]); // 주축
-            cov_marker.scale.y = 2 * std::sqrt(eigenvalues[1]); // 부축
+            // Set the size of the ellipse using eigenvalues
+            cov_marker.scale.x = 2 * std::sqrt(eigenvalues[0]); // Major axis
+            cov_marker.scale.y = 2 * std::sqrt(eigenvalues[1]); // Minor axis
 
             // std::cout<<"Scale: "<< cov_marker.scale.x<<" , "<<cov_marker.scale.y<<std::endl;
-            cov_marker.scale.z = 0.1; // Cylinder의 높이 (작게 설정)
+            cov_marker.scale.z = 0.1; // Height of the cylinder (set small)
 
             cov_marker.color.r = 0.0f;
             cov_marker.color.g = 1.0f;
             cov_marker.color.b = 0.0f;
             cov_marker.color.a = 0.3f;
 
-            // Eigenvector를 사용하여 ellipse의 방향 설정
+            // Set the direction of the ellipse using eigenvectors
             double angle = std::atan2(eigenvectors(1, 0), eigenvectors(0, 0));
             cov_marker.pose.orientation = tf::createQuaternionMsgFromYaw(angle);
 
@@ -532,16 +532,16 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
             start.y = track.state_vec(1);
             start.z = track.object_z - track.dimension.height / 2.0;
 
-            end.x = start.x + track.state_vec(3); // 속도 벡터를 사용하여 끝 점을 계산
+            end.x = start.x + track.state_vec(3); 
             end.y = start.y + track.state_vec(4);
             end.z = start.z;
 
             vel_arrow_marker.points.push_back(start);
             vel_arrow_marker.points.push_back(end);
 
-            vel_arrow_marker.scale.x = 0.3; // 화살표의 샤프트 직경
-            vel_arrow_marker.scale.y = 0.5; // 화살표의 헤드 직경
-            vel_arrow_marker.scale.z = 0.5; // 화살표의 헤드 길이
+            vel_arrow_marker.scale.x = 0.3; 
+            vel_arrow_marker.scale.y = 0.5; 
+            vel_arrow_marker.scale.z = 0.5; 
 
             vel_arrow_marker.color.r = 1.0f;
             vel_arrow_marker.color.g = 1.0f;
@@ -619,8 +619,8 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
                 track_stl.pose.position.z = track.object_z - track.dimension.height / 2.0;
 
                 tf2::Quaternion quat;
-                quat.setRPY(0, 0, stl_heading); // Roll=0, Pitch=0, Yaw=180도(π 라디안)
-                // quat.setRPY(0, 0, track.state_vec(2) ); // Roll=0, Pitch=0, Yaw=180도(π 라디안)
+                quat.setRPY(0, 0, stl_heading); // Roll=0, Pitch=0, Yaw=180 degrees (π radians)
+                // quat.setRPY(0, 0, track.state_vec(2) ); // Roll=0, Pitch=0, Yaw=180 degrees (π radians)
                 quat.normalize();
 
                 track_stl.pose.orientation.x = quat.x();
@@ -628,13 +628,13 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
                 track_stl.pose.orientation.z = quat.z();
                 track_stl.pose.orientation.w = quat.w();
 
-                // 색상을 설정합니다.
+                // Set color
                 track_stl.color.r = 0.8f;
                 track_stl.color.g = 0.8f;
                 track_stl.color.b = 0.8f;
                 track_stl.color.a = 1.0;
 
-                // Detection score 가 낮은 track은 회색
+                // Tracks with low detection score are gray
                 if (track.detection_confidence < 0.5) {
                     track_stl.color.r = 0.4f;
                     track_stl.color.g = 0.4f;
@@ -662,15 +662,15 @@ void EkfMultiObjectTrackingNode::ConvertTrackGlobalToLocal(mc_mot::TrackStructs&
 
     for (auto& track : track_structs.track) {
         if (track.is_init == true) {
-            // Track의 global 좌표계에서의 위치
+            // Position in global coordinates
             double x_global = track.state_vec(0);
             double y_global = track.state_vec(1);
 
-            // Lidar에서의 상대 위치 (Lidar 좌표계로 변환)
+            // Relative position from Lidar (convert to Lidar coordinates)
             double x_relative = x_global - synced_lidar_state.x;
             double y_relative = y_global - synced_lidar_state.y;
 
-            // Lidar 좌표계에서의 상대 위치
+            // Relative position in Lidar coordinates
             double x_lidar = cos_yaw * x_relative + sin_yaw * y_relative;
             double y_lidar = -sin_yaw * x_relative + cos_yaw * y_relative;
 
@@ -678,12 +678,12 @@ void EkfMultiObjectTrackingNode::ConvertTrackGlobalToLocal(mc_mot::TrackStructs&
             track.state_vec(1) = y_lidar;
             track.state_vec(2) = track.state_vec(2) - synced_lidar_state.yaw;
 
-            // yaw rate에 의한 속도 성분 보정
+            // Correct velocity component by yaw rate
             double yaw_rate_lidar = synced_lidar_state.yaw_rate;
             double v_add_x = -yaw_rate_lidar * y_lidar;
             double v_add_y = yaw_rate_lidar * x_lidar;
 
-            // Global 속도 변환 (Lidar 좌표계로 변환)
+            // Convert global velocity (to Lidar coordinates)
             double vx_global = track.state_vec(3);
             double vy_global = track.state_vec(4);
 
@@ -692,14 +692,14 @@ void EkfMultiObjectTrackingNode::ConvertTrackGlobalToLocal(mc_mot::TrackStructs&
             track.state_vec(3) = cos_yaw * glob_rel_vx + sin_yaw * glob_rel_vy + v_add_x;
             track.state_vec(4) = -sin_yaw * glob_rel_vx + cos_yaw * glob_rel_vy + v_add_y;
 
-            // 가속도 변환 (Lidar 좌표계로 변환)
+            // Convert acceleration (to Lidar coordinates)
             double ax_global = track.state_vec(6);
             double ay_global = track.state_vec(7);
 
             track.state_vec(6) = ax_global - synced_lidar_state.a_x;
             track.state_vec(7) = ay_global - synced_lidar_state.a_y;
 
-            // Yaw rate 변환 (Global yaw rate - Lidar yaw rate)
+            // Convert yaw rate (Global yaw rate - Lidar yaw rate)
             track.state_vec(5) = track.state_vec(5) - yaw_rate_lidar;
         }
     }
@@ -738,33 +738,33 @@ mc_mot::ObjectState EkfMultiObjectTrackingNode::PredictNextState(const mc_mot::O
                                                                    const mc_mot::ObjectState& state_t) {
     mc_mot::ObjectState state_t_plus_1;
 
-    // 시간 간격 계산
+    // Calculate time interval
     double delta_t = state_t.time_stamp - state_t_minus_1.time_stamp;
 
-    // 예측 시간
+    // Predict time
     state_t_plus_1.time_stamp = state_t.time_stamp + delta_t;
 
-    // 위치 예측
+    // Predict position
     state_t_plus_1.x = state_t.x + state_t.v_x * delta_t + 0.5 * state_t.a_x * delta_t * delta_t;
     state_t_plus_1.y = state_t.y + state_t.v_y * delta_t + 0.5 * state_t.a_y * delta_t * delta_t;
     state_t_plus_1.z = state_t.z + state_t.v_z * delta_t + 0.5 * state_t.a_z * delta_t * delta_t;
 
-    // 속도 예측
+    // Predict velocity
     state_t_plus_1.v_x = state_t.v_x + state_t.a_x * delta_t;
     state_t_plus_1.v_y = state_t.v_y + state_t.a_y * delta_t;
     state_t_plus_1.v_z = state_t.v_z + state_t.a_z * delta_t;
 
-    // 가속도는 T 시간의 가속도를 유지
+    // Maintain acceleration at T time
     state_t_plus_1.a_x = state_t.a_x;
     state_t_plus_1.a_y = state_t.a_y;
     state_t_plus_1.a_z = state_t.a_z;
 
-    // 각도 예측
+    // Predict angle
     state_t_plus_1.roll = state_t.roll + state_t.roll_rate * delta_t;
     state_t_plus_1.pitch = state_t.pitch + state_t.pitch_rate * delta_t;
     state_t_plus_1.yaw = state_t.yaw + state_t.yaw_rate * delta_t;
 
-    // 각속도 예측
+    // Predict angular velocity
     state_t_plus_1.roll_rate = state_t.roll_rate;
     state_t_plus_1.pitch_rate = state_t.pitch_rate;
     state_t_plus_1.yaw_rate = state_t.yaw_rate;
@@ -814,10 +814,10 @@ Eigen::Affine3d EkfMultiObjectTrackingNode::CreateTransformation(double x, doubl
                                                                    double pitch, double yaw) {
     Eigen::Affine3d transform = Eigen::Affine3d::Identity();
 
-    // 평행 이동 설정
+    // Set translation
     transform.translation() << x, y, z;
 
-    // 회전 설정 (yaw -> pitch -> roll 순서)
+    // Set rotation (yaw -> pitch -> roll order)
     transform.rotate(Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()));
     transform.rotate(Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()));
     transform.rotate(Eigen::AngleAxisd(roll, Eigen::Vector3d::UnitX()));

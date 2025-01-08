@@ -15,6 +15,11 @@ The `ekf_multi_object_tracking` package supports the following features:
 
 - **Individual Time Consideration for Rotating LiDAR**: Takes into account the individual detection times of objects from rotating LiDAR sensors, improving the accuracy of motion compensation and tracking.
 
+- **Vehicle Heading Correction**: Provides functionality to correct the vehicle's heading direction, enhancing the accuracy of the tracking system.
+
+- **Class Correction**: Supports class correction features, allowing for improved classification accuracy of tracked objects.
+
+
 These features make the package versatile and adaptable to a wide range of multi-object tracking applications.
 
 ## How to use
