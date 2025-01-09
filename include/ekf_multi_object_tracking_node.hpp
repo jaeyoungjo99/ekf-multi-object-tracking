@@ -46,6 +46,7 @@
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_listener.h>
+#include <tf/transform_datatypes.h>
 #include <tf_conversions/tf_eigen.h>
 
 #include <geometry_msgs/TransformStamped.h>
@@ -203,6 +204,13 @@ private:
             detect_object.state.x = bbox.pose.position.x;
             detect_object.state.y = bbox.pose.position.y;
             detect_object.state.z = bbox.pose.position.z;
+
+            tf::Quaternion quat;
+            tf::quaternionMsgToTF(bbox.pose.orientation, quat);
+            double roll, pitch, yaw;
+            tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
+            detect_object.state.yaw = yaw;
+            
             detect_object.dimension.length = bbox.dimensions.x;
             detect_object.dimension.width = bbox.dimensions.y;
             detect_object.dimension.height = bbox.dimensions.z;
