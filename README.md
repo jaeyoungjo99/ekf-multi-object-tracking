@@ -55,8 +55,11 @@ The behavior of the `ekf_multi_object_tracking` node can be customized using the
 ### Configuration Options
 - **input_localization**: Selects the input localization source.
   - `0`: None
-  - `1`: Geometry msg (TODO)
+  - `1`: nav_msgs::Odometry
   - `2`: NavSatFix (TODO)
+- **global_coord_track**: Whether the tracker is performed in global coordinates
+  - `true`: Global coordinate tracker
+  - `false`: Local coordinate tracker
 - **output_local_coord**: Determines if the output is in local coordinates.
   - `true`: Output local coordinate
   - `false`: Output global coordinate

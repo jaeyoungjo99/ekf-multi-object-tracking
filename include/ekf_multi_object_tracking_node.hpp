@@ -72,11 +72,8 @@ namespace ros_interface {
         UNKNOWN = 0,
         CAR = 1,
         TRUCK = 2,
-        MOTORCYCLE = 3,
-        PEDESTRIAN = 4,
-        BARRIER = 5,
-        TRAFFIC_LIGHT = 6,
-        TRAFFIC_SIGN = 7,
+        PEDESTRIAN = 3,
+        BICYCLE = 4,
     } ObjectClass;
 
     typedef enum {
@@ -202,6 +199,7 @@ private:
         for (const auto& bbox : msg->boxes) {
             ros_interface::DetectObject3D detect_object;
             detect_object.id = id++;
+            detect_object.state.header.stamp = i_lidar_objects_.header.stamp;
             detect_object.state.x = bbox.pose.position.x;
             detect_object.state.y = bbox.pose.position.y;
             detect_object.state.z = bbox.pose.position.z;
@@ -210,6 +208,7 @@ private:
             detect_object.dimension.height = bbox.dimensions.z;
 
             detect_object.classification = static_cast<ros_interface::ObjectClass>(bbox.label);
+            detect_object.confidence_score = 0.5; // TODO: Fill with acture detection confidence score
 
             i_lidar_objects_.object.push_back(detect_object);
         }
@@ -293,10 +292,79 @@ private:
     //     b_is_new_motion_input_ = true;
     // }
 
+    inline void CallbackOdometry(const nav_msgs::Odometry::ConstPtr& msg) {
+        if (config_.input_localization != mc_mot::LocalizationType::ODOMETRY) return;
+
+        std::lock_guard<std::mutex> lock(mutex_motion_);
+
+        double odom_time = msg->header.stamp.toSec();
+
+        double odom_vx = msg->twist.twist.linear.x;
+        double odom_vy = msg->twist.twist.linear.y;
+        double odom_yaw_rate = msg->twist.twist.angular.z;
+
+        if (b_can_dr_init_ == false) {
+            d_last_dr_time_ = odom_time;
+            b_can_dr_init_ = true;
+            return;
+        }
+
+        double dt = odom_time - d_last_dr_time_;
+
+        double x_local = odom_vx * dt;
+        double y_local = odom_vy * dt;
+
+        can_dr_state_(2) += odom_yaw_rate * dt;
+
+        double sy = sin(can_dr_state_(2));
+        double cy = cos(can_dr_state_(2));
+
+        can_dr_state_(0) += x_local * cy - y_local * sy;
+        can_dr_state_(1) += x_local * sy + y_local * cy;
+        
+
+        double vx_global = odom_vx * cy - odom_vy * sy;
+        double vy_global = odom_vx * sy + odom_vy * cy;
+
+        // ============================================================================================
+        // Input generation
+        // Position (ENU)
+        double lidar_x = 0.0, lidar_y = 0.0, lidar_z = 0.0; // m
+
+        lidar_x = can_dr_state_(0) + cfg_vec_d_ego_to_lidar_xyz_m_[0] * cy;
+        lidar_y = can_dr_state_(1) + cfg_vec_d_ego_to_lidar_xyz_m_[0] * sy;
+
+        // ----- Lidar transform matrix
+
+        // This motion time do nat has to be synced with detection. Only used as delta time.
+        lidar_state_.time_stamp = odom_time;
+        lidar_state_.x = lidar_x;
+        lidar_state_.y = lidar_y;
+        lidar_state_.yaw = can_dr_state_(2) + cfg_vec_d_ego_to_lidar_rpy_deg_[2] * M_PI / 180.0;
+        lidar_state_.yaw_rate = odom_yaw_rate;
+
+        lidar_state_.v_x = vx_global;
+        lidar_state_.v_y = vy_global;
+
+        // lidar_state_.a_x = ax_global;
+        // lidar_state_.a_y = ay_global;
+
+        deque_lidar_state_.push_back(lidar_state_);
+
+        while (deque_lidar_state_.size() > 1000) {
+            deque_lidar_state_.pop_front();
+        }
+
+        b_is_new_motion_input_ = true;
+
+        d_last_dr_time_ = odom_time;
+    }
+
     // Variables
 private:
     // ROS
     ros::Subscriber s_lidar_objects_;
+    ros::Subscriber s_odometry_;
     ros::Publisher p_track_objects_;
 
     ros::Publisher p_all_track_;
@@ -346,6 +414,7 @@ private:
     MultiClassObjectTrackingConfig config_;
 
     std::string cfg_lidar_objects_topic_ = "";
+    std::string cfg_odometry_topic_ = "";
 
     // Algorithm
 

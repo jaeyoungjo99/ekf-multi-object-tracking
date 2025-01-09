@@ -42,21 +42,17 @@ void EkfMultiObjectTrackingNode::Init() {
         ROS_ERROR_STREAM("Failed to get param: /topic_name/lidar_objects");
         cfg_lidar_objects_topic_ = "/app/perc/lidar_objects";
     }
-
-    std::cout<<"cfg_lidar_objects_topic_: " << cfg_lidar_objects_topic_<<std::endl;
+    if (!nh.getParam("/topic_name/odometry", cfg_odometry_topic_)) {
+        ROS_ERROR_STREAM("Failed to get param: /topic_name/odometry");
+        cfg_odometry_topic_ = "/odometry";
+    }
 
     // Subscriber init
     s_lidar_objects_ =
             nh.subscribe(cfg_lidar_objects_topic_, 10, &EkfMultiObjectTrackingNode::CallbackBoundingBoxArray, this);
 
-    // if (config_.input_localization == mc_mot::LocalizationType::NOVATEL)
-    //     s_inspvax_ =
-    //             nh.subscribe("/novatel/oem7/inspvax", 10, &EkfMultiObjectTrackingNode::CallbackNovatelINSPVAX, this);
-    // if (config_.input_localization == mc_mot::LocalizationType::VEHICLE_STATE)
-    //     s_vehicle_state_ =
-    //             nh.subscribe("/app/loc/vehicle_state", 10, &EkfMultiObjectTrackingNode::CallbackVehicleState, this);
-    // if (config_.input_localization == mc_mot::LocalizationType::CAN)
-    //     s_vehicle_can_ = nh.subscribe("/bsw/vehicle_can", 10, &EkfMultiObjectTrackingNode::CallbackVehicleCAN, this);
+    if (config_.input_localization == mc_mot::LocalizationType::ODOMETRY)
+        s_odometry_ = nh.subscribe(cfg_odometry_topic_, 10, &EkfMultiObjectTrackingNode::CallbackOdometry, this);
 
     // p_track_objects_ = nh.advertise<autohyu_msgs::TrackObjects>("/app/perc/track_objects", 10);
     p_all_track_ = nh.advertise<jsk_recognition_msgs::BoundingBoxArray>("app/perc/jsk_all_track", 10);
@@ -72,37 +68,39 @@ void EkfMultiObjectTrackingNode::Init() {
 
 void EkfMultiObjectTrackingNode::Run() {
 
-    if (config_.output_period_lidar == true && b_is_new_lidar_objects_ == false) {
-        return;
-    }
     double cur_ros_time = ros::Time::now().toSec();
 
     // ----- Input -----
     ros_interface::DetectObjects3D lidar_objects;
     {
         std::lock_guard<std::mutex> lock(mutex_lidar_objects_);
+        if (config_.output_period_lidar == true && b_is_new_lidar_objects_ == false) {
+            return;
+        }
         lidar_objects = i_lidar_objects_;
-        lidar_objects.header.stamp = cur_ros_time; // FIXME:
+
+        if(config_.input_localization == mc_mot::LocalizationType::NONE)
+            lidar_objects.header.stamp = cur_ros_time; // FIXME:
     }
 
     mc_mot::ObjectState lidar_state;
     {
         std::lock_guard<std::mutex> lock(mutex_motion_);
         lidar_state = lidar_state_;
+
+        // Motion Update with Input Localization
+        if (b_is_new_motion_input_ == true && b_is_track_init_ == true) {
+            double dt = lidar_state.time_stamp - last_predicted_time_;
+            mcot_algorithm_.RunPrediction(dt);
+            last_predicted_time_ = lidar_state.time_stamp;
+
+            b_is_new_motion_input_ = false;
+            b_is_new_track_objects_ = true;
+        }
     }
 
-    // ----- Algorithm -----
-    // Motion Update with Input Localization
-    if (b_is_new_motion_input_ == true && b_is_track_init_ == true) {
-        double dt = lidar_state.time_stamp - last_predicted_time_;
-        mcot_algorithm_.RunPrediction(dt);
-        last_predicted_time_ = lidar_state.time_stamp;
 
-        b_is_new_motion_input_ = false;
-        b_is_new_track_objects_ = true;
-    }
-
-    // Motion Update with fixed time
+    // Motion Update with fixed time (No Localization Input)
     if (config_.input_localization == mc_mot::LocalizationType::NONE &&
         b_is_track_init_ == true) {
 
@@ -123,7 +121,8 @@ void EkfMultiObjectTrackingNode::Run() {
 
         mc_mot::Meastructs meas_structs;
 
-        if (config_.input_localization == mc_mot::LocalizationType::NONE) {
+        if (config_.input_localization == mc_mot::LocalizationType::NONE ||
+            config_.global_coord_track == false) {
             DetectObjects2LocalMeasurements(lidar_objects, meas_structs);
         }
         else {
@@ -151,11 +150,11 @@ void EkfMultiObjectTrackingNode::Run() {
 
         std::string o_frame_id;
         if (config_.input_localization != mc_mot::LocalizationType::NONE) {
-            if (config_.output_local_coord == false) { // output world coordinate
-                o_frame_id = "world";
-                VisualizeTrackObjects(mot_track_structs, o_frame_id);
-            }
-            else { // output velodyne coordinate
+            // if (config_.output_local_coord == false) { // output world coordinate
+            //     o_frame_id = "world";
+            //     VisualizeTrackObjects(mot_track_structs, o_frame_id);
+            // }
+            // else { // output velodyne coordinate
                 std::deque<mc_mot::ObjectState> deque_lidar_state;
                 {
                     std::lock_guard<std::mutex> lock(mutex_motion_);
@@ -164,9 +163,10 @@ void EkfMultiObjectTrackingNode::Run() {
                 mc_mot::ObjectState synced_lidar_state =
                         GetSyncedLidarState(mot_track_structs.time_stamp, deque_lidar_state);
                 ConvertTrackGlobalToLocal(mot_track_structs, synced_lidar_state);
+
                 o_frame_id = "velodyne";
                 VisualizeTrackObjects(mot_track_structs, o_frame_id);
-            }
+            // }
         }
         else { // no localization. output velodyne coordinate
             o_frame_id = "velodyne";
@@ -178,7 +178,6 @@ void EkfMultiObjectTrackingNode::Run() {
 void EkfMultiObjectTrackingNode::Publish() {
     // std::lock_guard<std::mutex> lock(mutex_lidar_objects_);
     if (b_is_new_track_objects_ == true) {
-        std::cout<<"config_.visualize_mesh: "<<config_.visualize_mesh<<std::endl; // FIXME:
         std::cout<<"[MCOT] Publish Track Objects: " << o_jsk_tracked_objects_.boxes.size()<<std::endl;
         
         p_all_track_.publish(o_jsk_tracked_objects_);
@@ -201,7 +200,8 @@ void EkfMultiObjectTrackingNode::ProcessYAML() {
     config_.input_localization =  mc_mot::LocalizationType(i_input_localization);
 
     std::cout<<"i_input_localization: " << i_input_localization <<std::endl;
-
+    
+    nh.getParam("configure/global_coord_track", config_.global_coord_track);
     nh.getParam("configure/output_local_coord", config_.output_local_coord);
     nh.getParam("configure/output_period_lidar", config_.output_period_lidar);
     nh.getParam("configure/output_confirmed_track", config_.output_confirmed_track);
@@ -303,7 +303,7 @@ bool EkfMultiObjectTrackingNode::DetectObjects2GlobMeasurements(ros_interface::D
         o_glob_lidar_measurements.meas[i].state.time_stamp = lidar_objects.object[i].state.header.stamp;
         o_glob_lidar_measurements.meas[i].state.x = lidar_objects.object[i].state.x;
         o_glob_lidar_measurements.meas[i].state.y = lidar_objects.object[i].state.y;
-        o_glob_lidar_measurements.meas[i].state.z = lidar_objects.object[i].state.z;
+        o_glob_lidar_measurements.meas[i].state.z = lidar_objects.object[i].state.z - cfg_vec_d_ego_to_lidar_xyz_m_[2];
         o_glob_lidar_measurements.meas[i].state.yaw = lidar_objects.object[i].state.yaw;
 
         o_glob_lidar_measurements.meas[i].dimension.height = lidar_objects.object[i].dimension.height;
@@ -576,14 +576,14 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
                 track_stl.scale.z = 1.0;
 
                 switch (track.getRepClass()) {
-                case mc_mot::ObjectClass::REGULAR_VEHICLE:
+                case mc_mot::ObjectClass::CAR:
                     track_stl.mesh_resource = "package://ekf_multi_object_tracking/dae/SimpleCar_turn.dae";
                     track_stl.scale.x = track.dimension.length / 4.6;
                     track_stl.scale.y = track.dimension.width / 2.1;
                     track_stl.scale.z = track.dimension.height / 1.59;
 
                     break;
-                case mc_mot::ObjectClass::BUS:
+                case mc_mot::ObjectClass::TRUCK:
                     track_stl.mesh_resource = "package://ekf_multi_object_tracking/dae/bus.stl";
 
                     track_stl.scale.x = track.dimension.length / 15.952;
@@ -662,45 +662,68 @@ void EkfMultiObjectTrackingNode::ConvertTrackGlobalToLocal(mc_mot::TrackStructs&
 
     for (auto& track : track_structs.track) {
         if (track.is_init == true) {
-            // Position in global coordinates
-            double x_global = track.state_vec(0);
-            double y_global = track.state_vec(1);
 
-            // Relative position from Lidar (convert to Lidar coordinates)
-            double x_relative = x_global - synced_lidar_state.x;
-            double y_relative = y_global - synced_lidar_state.y;
+            // Position in track
+            double x_track = track.state_vec(S_X);
+            double y_track = track.state_vec(S_Y);
 
-            // Relative position in Lidar coordinates
-            double x_lidar = cos_yaw * x_relative + sin_yaw * y_relative;
-            double y_lidar = -sin_yaw * x_relative + cos_yaw * y_relative;
+            double x_lidar, y_lidar;
 
-            track.state_vec(0) = x_lidar;
-            track.state_vec(1) = y_lidar;
-            track.state_vec(2) = track.state_vec(2) - synced_lidar_state.yaw;
+            double glob_rel_vx = 0.0;
+            double glob_rel_vy = 0.0;   
 
-            // Correct velocity component by yaw rate
-            double yaw_rate_lidar = synced_lidar_state.yaw_rate;
-            double v_add_x = -yaw_rate_lidar * y_lidar;
-            double v_add_y = yaw_rate_lidar * x_lidar;
+            if(config_.global_coord_track == false){ // Local Tracker. Compensate absolute vel, acc, yawrate. No Orienation change
+                // Lidar coordinate position is same as track position
+                double x_lidar = x_track;
+                double y_lidar = y_track;
 
-            // Convert global velocity (to Lidar coordinates)
-            double vx_global = track.state_vec(3);
-            double vy_global = track.state_vec(4);
+                track.state_vec(S_X) = x_lidar;
+                track.state_vec(S_Y) = y_lidar;
 
-            double glob_rel_vx = vx_global - glob_lidar_vx;
-            double glob_rel_vy = vy_global - glob_lidar_vy;
-            track.state_vec(3) = cos_yaw * glob_rel_vx + sin_yaw * glob_rel_vy + v_add_x;
-            track.state_vec(4) = -sin_yaw * glob_rel_vx + cos_yaw * glob_rel_vy + v_add_y;
+                // Convert Global lidar state to local coordinate
+                double local_lidar_vx = cos_yaw * synced_lidar_state.v_x + sin_yaw * synced_lidar_state.v_y;
+                double local_lidar_vy = -sin_yaw * synced_lidar_state.v_x + cos_yaw * synced_lidar_state.v_y;
 
-            // Convert acceleration (to Lidar coordinates)
-            double ax_global = track.state_vec(6);
-            double ay_global = track.state_vec(7);
+                double local_lidar_ax = cos_yaw * synced_lidar_state.a_x + sin_yaw * synced_lidar_state.a_y;
+                double local_lidar_ay = -sin_yaw * synced_lidar_state.a_x + cos_yaw * synced_lidar_state.a_y;
 
-            track.state_vec(6) = ax_global - synced_lidar_state.a_x;
-            track.state_vec(7) = ay_global - synced_lidar_state.a_y;
+                // Compensate velocity by yawrate
+                double yaw_rate_lidar = synced_lidar_state.yaw_rate;
+                double v_add_x = -yaw_rate_lidar * y_lidar;
+                double v_add_y =  yaw_rate_lidar * x_lidar;
 
-            // Convert yaw rate (Global yaw rate - Lidar yaw rate)
-            track.state_vec(5) = track.state_vec(5) - yaw_rate_lidar;
+                // Compensate velocity
+                track.state_vec(S_VX) = track.state_vec(S_VX) + local_lidar_vx + v_add_x;
+                track.state_vec(S_VY) = track.state_vec(S_VY) + local_lidar_vy + v_add_y;
+
+                // Compensate acceleration
+                track.state_vec(S_AX) = track.state_vec(S_AX) + local_lidar_ax;
+                track.state_vec(S_AY) = track.state_vec(S_AY) + local_lidar_ay;
+
+                // Convert yaw rate
+                track.state_vec(S_YAW_RATE) = track.state_vec(S_YAW_RATE) + yaw_rate_lidar;
+
+            }else{ // Global Tracker. Compensate orientation
+                // Relative position from Lidar (convert to Lidar coordinates)
+                double x_relative = x_track - synced_lidar_state.x;
+                double y_relative = y_track - synced_lidar_state.y;
+
+                // Relative position in Lidar coordinates
+                double x_lidar = cos_yaw * x_relative + sin_yaw * y_relative;
+                double y_lidar = -sin_yaw * x_relative + cos_yaw * y_relative;
+
+                track.state_vec(S_X) = x_lidar;
+                track.state_vec(S_Y) = y_lidar;
+                track.state_vec(S_YAW) = track.state_vec(S_YAW) - synced_lidar_state.yaw;
+
+                // Convert global velocity to Lidar coordinates
+                track.state_vec(S_VX) = cos_yaw * track.state_vec(S_VX) + sin_yaw * track.state_vec(S_VY);
+                track.state_vec(S_VY) = -sin_yaw * track.state_vec(S_VX) + cos_yaw * track.state_vec(S_VY);
+
+                // Convert acceleration to Lidar coordinates
+                track.state_vec(S_AX) = cos_yaw * track.state_vec(S_AX) + sin_yaw * track.state_vec(S_AY);
+                track.state_vec(S_AY) = -sin_yaw * track.state_vec(S_AX) + cos_yaw * track.state_vec(S_AY);
+            }
         }
     }
 }

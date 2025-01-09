@@ -1,4 +1,3 @@
-<!-- -->
 <launch>
   <rosparam file="$(find ekf_multi_object_tracking)/config/config.yaml" command="load"/>   
   <param name="use_sim_time" value="true" />

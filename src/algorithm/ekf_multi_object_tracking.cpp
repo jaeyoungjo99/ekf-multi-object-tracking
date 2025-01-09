@@ -354,8 +354,8 @@ void EkfMultiObjectTracking::UpdateTrack(mc_mot::TrackStruct &track, const mc_mo
     track.updateClassScore(mc_mot::ObjectClass(measurement.classification));
 
     // Yaw rate Filtering based on Kinematic Model
-    if (config_.use_yaw_rate_filtering && (track.getRepClass() == mc_mot::ObjectClass::REGULAR_VEHICLE ||
-                                           track.getRepClass() == mc_mot::ObjectClass::BUS)) {
+    if (config_.use_yaw_rate_filtering && (track.getRepClass() == mc_mot::ObjectClass::CAR ||
+                                           track.getRepClass() == mc_mot::ObjectClass::TRUCK)) {
         double vel_heading_dot =
                 CalculateYawDotProduct(atan2(track.state_vec(S_VY), track.state_vec(S_VX)), track.state_vec(S_YAW));
         double vel_heading_cross =

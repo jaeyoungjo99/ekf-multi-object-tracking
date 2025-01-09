@@ -31,7 +31,7 @@
 #define MAX_TRACKS 200
 #define MAX_HISTORY 7
 #define MAX_HISTORY_FOR_OUTDATED 5
-#define CLASS_NUM 4
+#define CLASS_NUM 5
 
 #define INIT_COV_VAL 100.0
 
@@ -63,13 +63,12 @@ using Matrix8_3d = Eigen::Matrix<double, 8, 3>;
 
 namespace mc_mot {
 
-typedef enum { NONE, CAN, VEHICLE_STATE, NOVATEL } LocalizationType;
+typedef enum { NONE, ODOMETRY } LocalizationType;
 
 typedef enum { CV, CTRV, CA, CTRA } PredictionModel;
 
-typedef enum { REGULAR_VEHICLE, BUS, PEDESTRIAN, BICYCLE } ObjectClass;
+typedef enum { UNKNOWN, CAR, TRUCK, PEDESTRIAN, BICYCLE} ObjectClass;
 
-typedef enum { UNKNOWN, FORWARD, BACKWARD } ObjectDirection;
 
 struct ObjectState {
     double time_stamp{0.0};
@@ -199,7 +198,7 @@ struct TrackStruct {
         detection_confidence = 0.0;
         age = 0;
 
-        classification = ObjectClass::REGULAR_VEHICLE;
+        classification = ObjectClass::UNKNOWN;
         direction_score = 0.0;
         object_z = 0.0;
 
@@ -236,6 +235,7 @@ struct Meastructs {
 
 struct MultiClassObjectTrackingConfig {
     mc_mot::LocalizationType input_localization = mc_mot::LocalizationType::NONE;
+    bool global_coord_track{false};
     bool output_local_coord{false};
     bool output_period_lidar{false};
     bool output_confirmed_track{false};
