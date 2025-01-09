@@ -14,7 +14,6 @@
 #include "ekf_multi_object_tracking_node.hpp"
 
 EkfMultiObjectTrackingNode::EkfMultiObjectTrackingNode(){
-    b_is_wgs84_reference_init_ = false;
 
     // Data validation
     b_is_new_lidar_objects_ = false;
@@ -32,7 +31,7 @@ EkfMultiObjectTrackingNode::EkfMultiObjectTrackingNode(){
 EkfMultiObjectTrackingNode::~EkfMultiObjectTrackingNode() {}
 
 void EkfMultiObjectTrackingNode::Init() {
-    ROS_INFO_STREAM("[MCOT] Init");
+    ROS_INFO_STREAM("Init");
     // Node initialization
     ros::NodeHandle nh;
 
@@ -79,8 +78,10 @@ void EkfMultiObjectTrackingNode::Run() {
         }
         lidar_objects = i_lidar_objects_;
 
-        if(config_.input_localization == mc_mot::LocalizationType::NONE)
-            lidar_objects.header.stamp = cur_ros_time; // FIXME:
+        if(config_.input_localization == mc_mot::LocalizationType::NONE){
+            // FIXME: Remove here when your detection data is synced with ros time
+            lidar_objects.header.stamp = cur_ros_time; 
+        }
     }
 
     mc_mot::ObjectState lidar_state;
@@ -98,7 +99,6 @@ void EkfMultiObjectTrackingNode::Run() {
             b_is_new_track_objects_ = true;
         }
     }
-
 
     // Motion Update with fixed time (No Localization Input)
     if (config_.input_localization == mc_mot::LocalizationType::NONE &&
@@ -121,17 +121,22 @@ void EkfMultiObjectTrackingNode::Run() {
 
         mc_mot::Meastructs meas_structs;
 
+        // when there is no localization source or when using local coordinate tracking,
+        // just directly using original detection data as track update information.
         if (config_.input_localization == mc_mot::LocalizationType::NONE ||
             config_.global_coord_track == false) {
             DetectObjects2LocalMeasurements(lidar_objects, meas_structs);
         }
         else {
+            // when using localization source and using global coordinate tracking.
+            // convert local coordinate detection into global coordinate.
             if (DetectObjects2GlobMeasurements(lidar_objects, meas_structs) == false) {
-                ROS_WARN_STREAM("[MCOT] CANNOT CONVERT EGO TO GLOBAL. NO LIDAR STATES");
+                ROS_WARN_STREAM("CANNOT CONVERT EGO TO GLOBAL. NO LIDAR STATES");
                 return;
             }
         }
 
+        // Run measurment update in algorithm
         mcot_algorithm_.RunUpdate(meas_structs);
 
         b_is_new_lidar_objects_ = false;
@@ -164,12 +169,12 @@ void EkfMultiObjectTrackingNode::Run() {
                         GetSyncedLidarState(mot_track_structs.time_stamp, deque_lidar_state);
                 ConvertTrackGlobalToLocal(mot_track_structs, synced_lidar_state);
 
-                o_frame_id = "velodyne";
+                o_frame_id = str_detection_frame_id_;
                 VisualizeTrackObjects(mot_track_structs, o_frame_id);
             // }
         }
         else { // no localization. output velodyne coordinate
-            o_frame_id = "velodyne";
+            o_frame_id = str_detection_frame_id_;
             VisualizeTrackObjects(mot_track_structs, o_frame_id);
         }
     }
@@ -178,7 +183,7 @@ void EkfMultiObjectTrackingNode::Run() {
 void EkfMultiObjectTrackingNode::Publish() {
     // std::lock_guard<std::mutex> lock(mutex_lidar_objects_);
     if (b_is_new_track_objects_ == true) {
-        std::cout<<"[MCOT] Publish Track Objects: " << o_jsk_tracked_objects_.boxes.size()<<std::endl;
+        std::cout<<"Publish Track Objects: " << o_jsk_tracked_objects_.boxes.size()<<std::endl;
         
         p_all_track_.publish(o_jsk_tracked_objects_);
         p_all_track_info_.publish(o_vis_track_info_);
@@ -189,7 +194,7 @@ void EkfMultiObjectTrackingNode::Publish() {
     }
 }
 
-void EkfMultiObjectTrackingNode::Terminate() { ROS_INFO_STREAM("[MCOT] Terminate"); }
+void EkfMultiObjectTrackingNode::Terminate() { ROS_INFO_STREAM("Terminate Node"); }
 
 void EkfMultiObjectTrackingNode::ProcessYAML() {
     ros::NodeHandle nh; // NodeHandle with private namespace
@@ -215,7 +220,7 @@ void EkfMultiObjectTrackingNode::ProcessYAML() {
     nh.getParam("configure/max_association_dist_m", config_.max_association_dist_m);
 
     int i_prediction_model = 0;
-    nh.getParam("prediction_model", i_prediction_model);
+    nh.getParam("configure/prediction_model", i_prediction_model);
     config_.prediction_model = mc_mot::PredictionModel(i_prediction_model);
 
     nh.getParam("configure/system_noise_std_xy_m", config_.system_noise_std_xy_m);
@@ -233,24 +238,24 @@ void EkfMultiObjectTrackingNode::ProcessYAML() {
 
     // Vehicle origin parameters
     int i_vehicle_origin;
-    nh.getParam("vehicle_origin", i_vehicle_origin);
+    nh.getParam("vehicle_origin/vehicle_origin", i_vehicle_origin);
 
     std::string str_origin = (i_vehicle_origin == 0) ? "rear" : "cg";
     nh.getParam(str_origin + "_to_main_lidar/transform_xyz_m", cfg_vec_d_ego_to_lidar_xyz_m_);
     nh.getParam(str_origin + "_to_main_lidar/rotation_rpy_deg", cfg_vec_d_ego_to_lidar_rpy_deg_);
 
-    std::cout << "[MCOT] ego_to_lidar_xyz_m: ";
+    std::cout << "[Config] ego_to_lidar_xyz_m: ";
     for (const auto& val : cfg_vec_d_ego_to_lidar_xyz_m_) {
         std::cout << val << " ";
     }
 
-    std::cout << "[MCOT] ego_to_lidar_rpy_deg: ";
+    std::cout << "[Config] ego_to_lidar_rpy_deg: ";
     for (const auto& val : cfg_vec_d_ego_to_lidar_rpy_deg_) {
         std::cout << val << " ";
     }
 
     if (cfg_vec_d_ego_to_lidar_xyz_m_.size() != 3 || cfg_vec_d_ego_to_lidar_rpy_deg_.size() != 3) {
-        ROS_ERROR("[MCOT] Not proper calibration!");
+        ROS_ERROR("[Config] Not proper calibration!");
         ros::shutdown();
     }
 
@@ -288,7 +293,7 @@ bool EkfMultiObjectTrackingNode::DetectObjects2GlobMeasurements(ros_interface::D
             prediction_step_count++;
         }
 
-        ROS_WARN_STREAM("[MCOT] Predict state " << prediction_step_count << " Count.");
+        ROS_WARN_STREAM("[Local To Global] Predict state " << prediction_step_count << " Count.");
     }
 
     int i_det_size = lidar_objects.object.size();
@@ -296,21 +301,10 @@ bool EkfMultiObjectTrackingNode::DetectObjects2GlobMeasurements(ros_interface::D
     o_glob_lidar_measurements.time_stamp = lidar_objects.header.stamp;
 
     for (int i = 0; i < i_det_size; i++) {
-        o_glob_lidar_measurements.meas[i].id = lidar_objects.object[i].id;
-        o_glob_lidar_measurements.meas[i].detection_confidence = lidar_objects.object[i].confidence_score;
-        o_glob_lidar_measurements.meas[i].classification = mc_mot::ObjectClass(lidar_objects.object[i].classification);
+        // Type conversion from ros interface to mc_mot interface
+        ConvertDetectObjectToMeastruct(lidar_objects.object[i], o_glob_lidar_measurements.meas[i]);
 
-        o_glob_lidar_measurements.meas[i].state.time_stamp = lidar_objects.object[i].state.header.stamp;
-        o_glob_lidar_measurements.meas[i].state.x = lidar_objects.object[i].state.x;
-        o_glob_lidar_measurements.meas[i].state.y = lidar_objects.object[i].state.y;
-        o_glob_lidar_measurements.meas[i].state.z = lidar_objects.object[i].state.z - cfg_vec_d_ego_to_lidar_xyz_m_[2];
-        o_glob_lidar_measurements.meas[i].state.yaw = lidar_objects.object[i].state.yaw;
-
-        o_glob_lidar_measurements.meas[i].dimension.height = lidar_objects.object[i].dimension.height;
-        o_glob_lidar_measurements.meas[i].dimension.width = lidar_objects.object[i].dimension.width;
-        o_glob_lidar_measurements.meas[i].dimension.length = lidar_objects.object[i].dimension.length;
-
-        // 1. Measured angle based time compensation
+        // 1. Measured angle based time compensation.
         if (config_.cal_detection_individual_time == true) {
             AngleBasedTimeCompensation(o_glob_lidar_measurements.meas[i]);
         }
@@ -330,20 +324,25 @@ void EkfMultiObjectTrackingNode::DetectObjects2LocalMeasurements(ros_interface::
     o_local_lidar_measurements.time_stamp = lidar_objects.header.stamp;
 
     for (int i = 0; i < i_det_size; i++) {
-        o_local_lidar_measurements.meas[i].id = lidar_objects.object[i].id;
-        o_local_lidar_measurements.meas[i].detection_confidence = lidar_objects.object[i].confidence_score;
-        o_local_lidar_measurements.meas[i].classification = mc_mot::ObjectClass(lidar_objects.object[i].classification);
-
-        o_local_lidar_measurements.meas[i].state.time_stamp = lidar_objects.object[i].state.header.stamp;
-        o_local_lidar_measurements.meas[i].state.x = lidar_objects.object[i].state.x;
-        o_local_lidar_measurements.meas[i].state.y = lidar_objects.object[i].state.y;
-        o_local_lidar_measurements.meas[i].state.z = lidar_objects.object[i].state.z;
-        o_local_lidar_measurements.meas[i].state.yaw = lidar_objects.object[i].state.yaw;
-
-        o_local_lidar_measurements.meas[i].dimension.height = lidar_objects.object[i].dimension.height;
-        o_local_lidar_measurements.meas[i].dimension.width = lidar_objects.object[i].dimension.width;
-        o_local_lidar_measurements.meas[i].dimension.length = lidar_objects.object[i].dimension.length;
+        ConvertDetectObjectToMeastruct(lidar_objects.object[i], o_local_lidar_measurements.meas[i]);
     }
+}
+
+void EkfMultiObjectTrackingNode::ConvertDetectObjectToMeastruct(const ros_interface::DetectObject3D& detect_object, 
+                                                                mc_mot::Meastruct& meas) {
+    meas.id = detect_object.id;
+    meas.detection_confidence = detect_object.confidence_score;
+    meas.classification = mc_mot::ObjectClass(detect_object.classification);
+
+    meas.state.time_stamp = detect_object.state.header.stamp;
+    meas.state.x = detect_object.state.x;
+    meas.state.y = detect_object.state.y;
+    meas.state.z = detect_object.state.z;
+    meas.state.yaw = detect_object.state.yaw;
+
+    meas.dimension.height = detect_object.dimension.height;
+    meas.dimension.width = detect_object.dimension.width;
+    meas.dimension.length = detect_object.dimension.length;
 }
 
 void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStructs& track_structs,
@@ -356,7 +355,7 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
 
     if (config_.visualize_mesh == true) {
         // Visualize EGO STL
-        o_vis_ego_stl_.header.frame_id = "velodyne";
+        o_vis_ego_stl_.header.frame_id = str_detection_frame_id_;
         o_vis_ego_stl_.ns = "ego_stl";
         o_vis_ego_stl_.id = 0;
         o_vis_ego_stl_.type = visualization_msgs::Marker::MESH_RESOURCE;
@@ -389,8 +388,10 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
     }
 
     for (auto track : track_structs.track) {
-        double track_vel = sqrt(track.state_vec(3) * track.state_vec(3) + track.state_vec(4) * track.state_vec(4));
-        double track_acc = sqrt(track.state_vec(6) * track.state_vec(6) + track.state_vec(7) * track.state_vec(7));
+        double track_vel = sqrt(track.state_vec(S_VX) * track.state_vec(S_VX)
+                                + track.state_vec(S_VY) * track.state_vec(S_VY));
+        double track_acc = sqrt(track.state_vec(S_AX) * track.state_vec(S_AX)
+                                + track.state_vec(S_AY) * track.state_vec(S_AY));
 
         bool b_visualize_cur_track = IsVisualizeTrack(track);
 
@@ -398,20 +399,20 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
         if (b_visualize_cur_track == true) {
             jsk_recognition_msgs::BoundingBox o_jsk_bbox;
             o_jsk_bbox.header.frame_id = frame_id;
-            o_jsk_bbox.header.stamp = ros::Time(track_structs.time_stamp);
+            // o_jsk_bbox.header.stamp = ros::Time(track_structs.time_stamp);
+            o_jsk_bbox.header.stamp = ros::Time(track.update_time);
 
-            // o_jsk_bbox.label = mc_mot::ObjectClass(track.classification);
             o_jsk_bbox.label = track.getRepClass();
             o_jsk_bbox.dimensions.x = track.dimension.length;
             o_jsk_bbox.dimensions.y = track.dimension.width;
             o_jsk_bbox.dimensions.z = track.dimension.height;
-            o_jsk_bbox.pose.position.x = track.state_vec(0);
-            o_jsk_bbox.pose.position.y = track.state_vec(1);
+            o_jsk_bbox.pose.position.x = track.state_vec(S_X);
+            o_jsk_bbox.pose.position.y = track.state_vec(S_Y);
             o_jsk_bbox.pose.position.z = track.object_z;
 
             // bounding box
             tf2::Quaternion myQuaternion;
-            myQuaternion.setRPY(0, 0, track.state_vec(2));
+            myQuaternion.setRPY(0, 0, track.state_vec(S_YAW));
             myQuaternion = myQuaternion.normalize();
             o_jsk_bbox.pose.orientation.x = myQuaternion.getX();
             o_jsk_bbox.pose.orientation.y = myQuaternion.getY();
@@ -446,7 +447,7 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
                          << "\nAccel  : " << std::fixed << std::setprecision(3)
                          << std::round(track_acc * 1000.0) / 1000.0 << "m/s^2"
                          << "\nYawVel : " << std::fixed << std::setprecision(3)
-                         << std::round(track.state_vec(5) * 180.0 / M_PI * 1000.0) / 1000.0 << "deg/s"
+                         << std::round(track.state_vec(S_YAW_RATE) * 180.0 / M_PI * 1000.0) / 1000.0 << "deg/s"
                          << "\nHscore : " << std::fixed << std::setprecision(3)
                          << std::round(track.direction_score * 1000.0) / 1000.0;
 
@@ -459,10 +460,10 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
             vis_track_info.color.b = 1.0f;
             vis_track_info.color.a = 1.0f;
 
-            vis_track_info.pose.position.x = track.state_vec(0);
-            vis_track_info.pose.position.y = track.state_vec(1);
+            vis_track_info.pose.position.x = track.state_vec(S_X);
+            vis_track_info.pose.position.y = track.state_vec(S_Y);
             vis_track_info.pose.position.z = track.object_z + 3.0;
-            vis_track_info.pose.orientation = tf::createQuaternionMsgFromYaw(track.state_vec(2));
+            vis_track_info.pose.orientation = tf::createQuaternionMsgFromYaw(track.state_vec(S_YAW));
 
             if (b_visualize_cur_track == false) {
                 vis_track_info.action = visualization_msgs::Marker::DELETE;
@@ -479,8 +480,8 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
             cov_marker.id = track.track_id;
             cov_marker.action = visualization_msgs::Marker::ADD;
             cov_marker.type = visualization_msgs::Marker::CYLINDER;
-            cov_marker.pose.position.x = track.state_vec(0);
-            cov_marker.pose.position.y = track.state_vec(1);
+            cov_marker.pose.position.x = track.state_vec(S_X);
+            cov_marker.pose.position.y = track.state_vec(S_Y);
             cov_marker.pose.position.z = track.object_z - track.dimension.height / 2.0;
             cov_marker.pose.orientation.x = 0.0;
             cov_marker.pose.orientation.y = 0.0;
@@ -489,7 +490,8 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
 
             // Calculate eigenvalues and eigenvectors of the covariance matrix
             Eigen::Matrix2d cov_matrix;
-            cov_matrix << track.state_cov(0, 0), track.state_cov(0, 1), track.state_cov(1, 0), track.state_cov(1, 1);
+            cov_matrix << track.state_cov(S_X, S_X), track.state_cov(S_X, S_Y),
+                            track.state_cov(S_Y, S_X), track.state_cov(S_Y, S_Y);
 
             Eigen::SelfAdjointEigenSolver<Eigen::Matrix2d> eigensolver(cov_matrix);
             Eigen::Vector2d eigenvalues = eigensolver.eigenvalues();
@@ -499,7 +501,6 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
             cov_marker.scale.x = 2 * std::sqrt(eigenvalues[0]); // Major axis
             cov_marker.scale.y = 2 * std::sqrt(eigenvalues[1]); // Minor axis
 
-            // std::cout<<"Scale: "<< cov_marker.scale.x<<" , "<<cov_marker.scale.y<<std::endl;
             cov_marker.scale.z = 0.1; // Height of the cylinder (set small)
 
             cov_marker.color.r = 0.0f;
@@ -528,12 +529,12 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
             vel_arrow_marker.action = visualization_msgs::Marker::ADD;
 
             geometry_msgs::Point start, end;
-            start.x = track.state_vec(0);
-            start.y = track.state_vec(1);
+            start.x = track.state_vec(S_X);
+            start.y = track.state_vec(S_Y);
             start.z = track.object_z - track.dimension.height / 2.0;
 
-            end.x = start.x + track.state_vec(3); 
-            end.y = start.y + track.state_vec(4);
+            end.x = start.x + track.state_vec(S_VX); 
+            end.y = start.y + track.state_vec(S_VY);
             end.z = start.z;
 
             vel_arrow_marker.points.push_back(start);
@@ -569,9 +570,9 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
                 track_stl.type = visualization_msgs::Marker::MESH_RESOURCE;
                 track_stl.action = visualization_msgs::Marker::ADD;
 
-                double stl_heading = track.state_vec(2);
+                double stl_heading = track.state_vec(S_YAW);
 
-                track_stl.scale.x = 1.0; // .stl 파일의 스케일을 설정합니다.
+                track_stl.scale.x = 1.0;
                 track_stl.scale.y = 1.0;
                 track_stl.scale.z = 1.0;
 
@@ -614,13 +615,12 @@ void EkfMultiObjectTrackingNode::VisualizeTrackObjects(const mc_mot::TrackStruct
                     break;
                 }
 
-                track_stl.pose.position.x = track.state_vec(0);
-                track_stl.pose.position.y = track.state_vec(1);
+                track_stl.pose.position.x = track.state_vec(S_X);
+                track_stl.pose.position.y = track.state_vec(S_Y);
                 track_stl.pose.position.z = track.object_z - track.dimension.height / 2.0;
 
                 tf2::Quaternion quat;
                 quat.setRPY(0, 0, stl_heading); // Roll=0, Pitch=0, Yaw=180 degrees (π radians)
-                // quat.setRPY(0, 0, track.state_vec(2) ); // Roll=0, Pitch=0, Yaw=180 degrees (π radians)
                 quat.normalize();
 
                 track_stl.pose.orientation.x = quat.x();
@@ -847,6 +847,8 @@ Eigen::Affine3d EkfMultiObjectTrackingNode::CreateTransformation(double x, doubl
 
     return transform;
 }
+
+
 
 // --------------------------------------------------
 

@@ -35,6 +35,8 @@
 
 #define INIT_COV_VAL 100.0
 
+// CA MODEL STATE: X Y YAW VX VY YAW_RATE AX AY
+//                 0  1  2  3  4  5  6  7
 #define S_X 0
 #define S_Y 1
 #define S_YAW 2
@@ -63,12 +65,9 @@ using Matrix8_3d = Eigen::Matrix<double, 8, 3>;
 
 namespace mc_mot {
 
-typedef enum { NONE, ODOMETRY } LocalizationType;
-
-typedef enum { CV, CTRV, CA, CTRA } PredictionModel;
-
-typedef enum { UNKNOWN, CAR, TRUCK, PEDESTRIAN, BICYCLE} ObjectClass;
-
+typedef enum { NONE = 0, ODOMETRY } LocalizationType;
+typedef enum { CV = 0, CTRV, CA, CTRA } PredictionModel;
+typedef enum { UNKNOWN = 0, CAR, TRUCK, PEDESTRIAN, BICYCLE} ObjectClass;
 
 struct ObjectState {
     double time_stamp{0.0};
@@ -94,9 +93,6 @@ struct ObjectDimension {
     double width{0.0};
     double height{0.0};
 };
-
-// CA MODEL STATE: X Y YAW VX VY YAW_RATE AX AY
-//                 0  1  2  3  4  5  6  7
 
 struct TrackStruct {
     int track_id{-1};
@@ -284,7 +280,7 @@ public:
     // Public functions
     void RunPrediction(double dt_sec);
     void RunUpdate(const mc_mot::Meastructs &measurements);
-    mc_mot::TrackStructs GetTrackResults();
+    mc_mot::TrackStructs GetTrackResults() const;
 
     void UpdateConfig(const MultiClassObjectTrackingConfig config);
 

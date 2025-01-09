@@ -22,6 +22,20 @@ The `ekf_multi_object_tracking` package supports the following features:
 
 These features make the package versatile and adaptable to a wide range of multi-object tracking applications.
 
+## I/O
+
+### Input
+| Description                              | Type                      |
+|------------------------------------------|---------------------------|
+| Detection info                           | `jsk_recognition_msgs::BoundingBoxArray` |
+| Localization info (optional)             | `nav_msgs::Odometry` (optional)          |
+
+### Output
+| Description                              | Type                                |
+|------------------------------------------|-------------------------------------|
+| Track Bounding Box                       | `jsk_recognition_msgs::BoundingBoxArray` |
+| Track Info                               | `visualization_msgs::MarkerArray`   |
+
 ## How to use
 ### 1. Install ROS messages and other libraries
 * for Ubuntu 20.04 (noetic)

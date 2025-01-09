@@ -167,10 +167,15 @@ public:
     void MainLoop();
 
 private:
+
+    // Data type conversion and Local-Global Transform
+    // FIXME: Rewrite this functions for your custom detection data type
     bool DetectObjects2GlobMeasurements(ros_interface::DetectObjects3D lidar_objects,
                                         mc_mot::Meastructs& o_glob_lidar_measurements);
     void DetectObjects2LocalMeasurements(ros_interface::DetectObjects3D lidar_objects,
                                          mc_mot::Meastructs& o_local_lidar_measurements);
+    void ConvertDetectObjectToMeastruct(const ros_interface::DetectObject3D& detect_object,
+                                        mc_mot::Meastruct& meas);
 
     void VisualizeTrackObjects(const mc_mot::TrackStructs& track_structs, std::string frame_id);
     void ConvertTrackGlobalToLocal(mc_mot::TrackStructs& track_structs, mc_mot::ObjectState synced_lidar_state);
@@ -192,6 +197,7 @@ private:
 
         // i_lidar_objects_.header = msg->header;
         i_lidar_objects_.header.frame_id = msg->header.frame_id;
+        str_detection_frame_id_ = msg->header.frame_id;
         i_lidar_objects_.header.seq = msg->header.seq;
         i_lidar_objects_.header.stamp = ros_bridge::GetTimeStamp( msg->header.stamp);
         i_lidar_objects_.object.clear();
@@ -215,90 +221,17 @@ private:
             detect_object.dimension.width = bbox.dimensions.y;
             detect_object.dimension.height = bbox.dimensions.z;
 
+            // FIXME: Use bbox label as class.
             detect_object.classification = static_cast<ros_interface::ObjectClass>(bbox.label);
-            detect_object.confidence_score = 0.5; // TODO: Fill with acture detection confidence score
+            detect_object.confidence_score = 0.9; // FIXME: Fill with acture detection confidence score
+            // if confidence score is lower than 0.5, algorithm 10x measurement noise
 
             i_lidar_objects_.object.push_back(detect_object);
         }
 
-        std::cout<<"[MCOT] Callback BoundingBoxArray: " << i_lidar_objects_.object.size() << " objects" << std::endl;
+        std::cout<<"Callback BoundingBoxArray: " << i_lidar_objects_.object.size() << " objects" << std::endl;
         b_is_new_lidar_objects_ = true;
     }
-
-    // inline void CallbackNovatelINSPVAX(const novatel_oem7_msgs::INSPVAX::ConstPtr& msg) {
-    //     if (config_.input_localization != mc_mot::LocalizationType::NOVATEL) return;
-
-    //     std::lock_guard<std::mutex> lock(mutex_motion_);
-
-    //     i_novatel_inspvax_ = ros_bridge::GetNovatelInspvax(*msg);
-
-    //     // Initialize reference point
-    //     if (b_is_wgs84_reference_init_ == false) {
-    //         if (config_.use_predefined_ref_point == false) {
-    //             wgs84_reference_point_.lat = i_novatel_inspvax_.latitude;
-    //             wgs84_reference_point_.lon = i_novatel_inspvax_.longitude;
-    //             wgs84_reference_point_.ele = i_novatel_inspvax_.height;
-    //         }
-    //         else {
-    //             wgs84_reference_point_.lat = config_.reference_lat;
-    //             wgs84_reference_point_.lon = config_.reference_lon;
-    //             wgs84_reference_point_.ele = config_.reference_height;
-    //         }
-
-    //         b_is_wgs84_reference_init_ = true;
-    //     }
-
-    //     lanelet::GPSPoint v_gps_point;
-    //     v_gps_point.lat = i_novatel_inspvax_.latitude;
-    //     v_gps_point.lon = i_novatel_inspvax_.longitude;
-    //     v_gps_point.ele = i_novatel_inspvax_.height;
-
-    //     lanelet::projection::LocalCartesianProjector v_projector_(
-    //             lanelet::Origin({wgs84_reference_point_.lat, wgs84_reference_point_.lon}));
-
-    //     // Ego frame xyz
-    //     lanelet::BasicPoint3d cartesian_projpos = v_projector_.forward(v_gps_point);
-
-    //     // ============================================================================================
-    //     // Input generation
-    //     // Position (ENU)
-    //     double lidar_x = 0.0, lidar_y = 0.0, lidar_z = 0.0; // m
-    //     // Attitude
-    //     double novatel_roll = 0.0, novatel_pitch = 0.0, novatel_yaw = 0.0; // rad
-
-    //     novatel_roll = i_novatel_inspvax_.roll * ros_interface::DEG2RAD;
-    //     novatel_pitch = (-i_novatel_inspvax_.pitch) * ros_interface::DEG2RAD;
-    //     novatel_yaw = (90.0 - i_novatel_inspvax_.azimuth) * ros_interface::DEG2RAD;
-
-    //     double sy = sin(novatel_yaw);
-    //     double cy = cos(novatel_yaw);
-    //     lidar_x = cartesian_projpos.x() + cfg_vec_d_ego_to_lidar_xyz_m_[0] * cy;
-    //     lidar_y = cartesian_projpos.y() + cfg_vec_d_ego_to_lidar_xyz_m_[0] * sy;
-    //     lidar_z = i_novatel_inspvax_.height - wgs84_reference_point_.ele;
-
-    //     // ----- Lidar transform matrix
-
-    //     // This motion time do nat has to be synced with detection. Only used as delta time.
-    //     lidar_state_.time_stamp = i_novatel_inspvax_.header.stamp;
-    //     lidar_state_.x = lidar_x;
-    //     lidar_state_.y = lidar_y;
-    //     lidar_state_.yaw = novatel_yaw + cfg_vec_d_ego_to_lidar_rpy_deg_[2] * M_PI / 180.0;
-
-    //     lidar_state_.v_x = i_novatel_inspvax_.east_velocity;
-    //     lidar_state_.v_y = i_novatel_inspvax_.north_velocity;
-
-    //     lidar_state_.yaw_rate = 0.0;
-    //     lidar_state_.a_x = 0.0;
-    //     lidar_state_.a_y = 0.0;
-
-    //     deque_lidar_state_.push_back(lidar_state_);
-
-    //     while (deque_lidar_state_.size() > 1000) {
-    //         deque_lidar_state_.pop_front();
-    //     }
-
-    //     b_is_new_motion_input_ = true;
-    // }
 
     inline void CallbackOdometry(const nav_msgs::Odometry::ConstPtr& msg) {
         if (config_.input_localization != mc_mot::LocalizationType::ODOMETRY) return;
@@ -322,13 +255,13 @@ private:
         double x_local = odom_vx * dt;
         double y_local = odom_vy * dt;
 
-        can_dr_state_(2) += odom_yaw_rate * dt;
+        motion_dr_state_(2) += odom_yaw_rate * dt;
 
-        double sy = sin(can_dr_state_(2));
-        double cy = cos(can_dr_state_(2));
+        double sy = sin(motion_dr_state_(2));
+        double cy = cos(motion_dr_state_(2));
 
-        can_dr_state_(0) += x_local * cy - y_local * sy;
-        can_dr_state_(1) += x_local * sy + y_local * cy;
+        motion_dr_state_(0) += x_local * cy - y_local * sy;
+        motion_dr_state_(1) += x_local * sy + y_local * cy;
         
 
         double vx_global = odom_vx * cy - odom_vy * sy;
@@ -339,8 +272,8 @@ private:
         // Position (ENU)
         double lidar_x = 0.0, lidar_y = 0.0, lidar_z = 0.0; // m
 
-        lidar_x = can_dr_state_(0) + cfg_vec_d_ego_to_lidar_xyz_m_[0] * cy;
-        lidar_y = can_dr_state_(1) + cfg_vec_d_ego_to_lidar_xyz_m_[0] * sy;
+        lidar_x = motion_dr_state_(0) + cfg_vec_d_ego_to_lidar_xyz_m_[0] * cy;
+        lidar_y = motion_dr_state_(1) + cfg_vec_d_ego_to_lidar_xyz_m_[0] * sy;
 
         // ----- Lidar transform matrix
 
@@ -348,7 +281,7 @@ private:
         lidar_state_.time_stamp = odom_time;
         lidar_state_.x = lidar_x;
         lidar_state_.y = lidar_y;
-        lidar_state_.yaw = can_dr_state_(2) + cfg_vec_d_ego_to_lidar_rpy_deg_[2] * M_PI / 180.0;
+        lidar_state_.yaw = motion_dr_state_(2) + cfg_vec_d_ego_to_lidar_rpy_deg_[2] * M_PI / 180.0;
         lidar_state_.yaw_rate = odom_yaw_rate;
 
         lidar_state_.v_x = vx_global;
@@ -388,6 +321,7 @@ private:
 
     // I/O Msg
     ros_interface::DetectObjects3D i_lidar_objects_;
+    std::string str_detection_frame_id_ = "";
 
     jsk_recognition_msgs::BoundingBoxArray o_jsk_tracked_objects_;
     visualization_msgs::MarkerArray o_vis_track_info_;
@@ -400,10 +334,7 @@ private:
 
     bool b_is_track_init_;
 
-    // lanelet::GPSPoint wgs84_reference_point_;
-    bool b_is_wgs84_reference_init_;
-
-    Eigen::Vector3d can_dr_state_{Eigen::Vector3d::Zero()};
+    Eigen::Vector3d motion_dr_state_{Eigen::Vector3d::Zero()};
     bool b_can_dr_init_{false};
     double d_last_dr_time_{0.0};
 

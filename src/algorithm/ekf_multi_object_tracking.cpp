@@ -26,7 +26,6 @@ void EkfMultiObjectTracking::RunPrediction(double dt_sec) {
 }
 
 void EkfMultiObjectTracking::RunUpdate(const mc_mot::Meastructs &measurements) {
-    // std::cout << "[MCOT Algo] Run" << std::endl;
 
     recent_timestamp_ = measurements.time_stamp;
 
@@ -137,8 +136,7 @@ void EkfMultiObjectTracking::RunUpdate(const mc_mot::Meastructs &measurements) {
     // ======= For debugging =============
 }
 
-mc_mot::TrackStructs EkfMultiObjectTracking::GetTrackResults() {
-    // std::cout << "[MCOT Algo] GetTrackResults" << std::endl;
+mc_mot::TrackStructs EkfMultiObjectTracking::GetTrackResults() const{
 
     mc_mot::TrackStructs o_track_results;
 
@@ -147,25 +145,23 @@ mc_mot::TrackStructs EkfMultiObjectTracking::GetTrackResults() {
     for (auto &track : all_tracks_) {
         mc_mot::TrackStruct o_track;
         o_track = track;
-        double track_vel = sqrt(o_track.state_vec(S_VX) * o_track.state_vec(S_VX) +
-                                o_track.state_vec(S_VY) * o_track.state_vec(S_VY));
-        if (track_vel < 1.0 && o_track.classification != mc_mot::ObjectClass::PEDESTRIAN) {
-            o_track.state_vec(S_VX) = 0.0;       // vx
-            o_track.state_vec(S_VY) = 0.0;       // vy
-            o_track.state_vec(S_YAW_RATE) = 0.0; // yawrate
-            o_track.state_vec(S_AX) = 0.0;       // ax
-            o_track.state_vec(S_AY) = 0.0;       // ay
-        }
+        // double track_vel = sqrt(o_track.state_vec(S_VX) * o_track.state_vec(S_VX) +
+        //                         o_track.state_vec(S_VY) * o_track.state_vec(S_VY));
+        // if (track_vel < 1.0 && o_track.classification != mc_mot::ObjectClass::PEDESTRIAN) {
+        //     o_track.state_vec(S_VX) = 0.0;
+        //     o_track.state_vec(S_VY) = 0.0;
+        //     o_track.state_vec(S_YAW_RATE) = 0.0;
+        //     o_track.state_vec(S_AX) = 0.0;
+        //     o_track.state_vec(S_AY) = 0.0;
+        // }
         o_track_results.track.push_back(o_track);
     }
-
-    // std::cout << "[MCOT Algo] GetTrackResults Num: " << o_track_results.track.size() << std::endl;
 
     return o_track_results;
 }
 
 void EkfMultiObjectTracking::UpdateConfig(const MultiClassObjectTrackingConfig config) {
-    std::cout << "[MCOT Algo] UpdateConfig !" << std::endl;
+    std::cout << "Update Config !" << std::endl;
     config_ = config;
     UpdateMatrix();
 }
@@ -179,9 +175,9 @@ void EkfMultiObjectTracking::PredictTrack(mc_mot::TrackStruct &track, double dt)
     // Retain only the velocity in the vehicle heading direction
     if (config_.use_kinematic_model == true) {
         double heading_align_vel =
-                track.state_vec(S_VX) * cos(track.state_vec[2]) + track.state_vec(S_VY) * sin(track.state_vec[2]);
-        double heading_align_vx = heading_align_vel * cos(track.state_vec[2]);
-        double heading_align_vy = heading_align_vel * sin(track.state_vec[2]);
+                track.state_vec(S_VX) * cos(track.state_vec[S_YAW]) + track.state_vec(S_VY) * sin(track.state_vec[S_YAW]);
+        double heading_align_vx = heading_align_vel * cos(track.state_vec[S_YAW]);
+        double heading_align_vy = heading_align_vel * sin(track.state_vec[S_YAW]);
 
         track.state_vec(S_VX) = heading_align_vx;
         track.state_vec(S_VY) = heading_align_vy;
@@ -353,9 +349,9 @@ void EkfMultiObjectTracking::UpdateTrack(mc_mot::TrackStruct &track, const mc_mo
     // Class Filtering
     track.updateClassScore(mc_mot::ObjectClass(measurement.classification));
 
-    // Yaw rate Filtering based on Kinematic Model
-    if (config_.use_yaw_rate_filtering && (track.getRepClass() == mc_mot::ObjectClass::CAR ||
-                                           track.getRepClass() == mc_mot::ObjectClass::TRUCK)) {
+    // Yaw rate Filtering based on Kinematic Model. Only available in global track mode
+    if (config_.use_yaw_rate_filtering && config_.global_coord_track == true &&
+        (track.getRepClass() == mc_mot::ObjectClass::CAR || track.getRepClass() == mc_mot::ObjectClass::TRUCK)) {
         double vel_heading_dot =
                 CalculateYawDotProduct(atan2(track.state_vec(S_VY), track.state_vec(S_VX)), track.state_vec(S_YAW));
         double vel_heading_cross =
@@ -503,8 +499,9 @@ double EkfMultiObjectTracking::CalculateMahalanobisDistance(const mc_mot::Object
     mean_diff << state1.x - track.state_vec(S_X), state1.y - track.state_vec(S_Y);
 
     Eigen::Matrix2d covariance;
-    covariance << track.state_cov(0, 0), track.state_cov(0, 1), track.state_cov(1, 0),
-            track.state_cov(1, 1); // Use the top 2x2 part of state_cov as the covariance matrix
+    covariance << track.state_cov(S_X, S_X), track.state_cov(S_X, S_Y),
+                track.state_cov(S_Y, S_X), track.state_cov(S_Y, S_Y); 
+                // Use the top 2x2 part of state_cov as the covariance matrix
 
     // Calculate the inverse of the covariance matrix
     Eigen::Matrix2d inv_covariance = covariance.inverse();

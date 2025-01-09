@@ -20,8 +20,8 @@ configure:
   lidar_rotation_period: 0.1
   lidar_sync_scan_start: false  # false: Sync lidar time to scan end, true: Sync lidar time to scan start
 
-  max_association_dist_m: 5.0
-  prediction_model: 0  # 0: CV, 1: CTRV, 2: CA, 3: CTRA
+  max_association_dist_m: 5.0 # Maximum association distance
+  prediction_model: 2  # 0: CV, 1: CTRV, 2: CA, 3: CTRA
   system_noise_std_xy_m: 0.01
   system_noise_std_yaw_deg: 0.5
   system_noise_std_vx_vy_ms: 1.0
