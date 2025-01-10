@@ -28,7 +28,7 @@
 #include <utility>
 #include <vector>
 
-#define MAX_TRACKS 200
+#define MAX_TRACKS 500
 #define MAX_HISTORY 7
 #define MAX_HISTORY_FOR_OUTDATED 5
 #define CLASS_NUM 5
@@ -143,10 +143,8 @@ struct TrackStruct {
     // Check if the track is outdated
     bool isOutdated() {
         // If the number of detections in the recent MAX_HISTORY is less than MAX_HISTORY_FOR_OUTDATED, it is outdated
-        if (countDetectionNum() < std::min(age, static_cast<unsigned int>(MAX_HISTORY)) - MAX_HISTORY_FOR_OUTDATED) {
-            return true;
-        }
-        return false;
+        return countDetectionNum() < 
+                MAX_HISTORY_FOR_OUTDATED - std::max(0, MAX_HISTORY - static_cast<int>(age) );
     }
 
     // Update the representative class probability of the track

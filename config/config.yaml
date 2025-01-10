@@ -1,10 +1,11 @@
 topic_name:
-  vehicle_state: /app/loc/vehicle_state
   lidar_objects: /hmi/perc/jsk_pillar_objects
   odometry: /novatel/oem7/odom
+  output_track_jsk: /app/perc/jsk_all_track
+  output_track_marker: /app/perc/vis_all_track
   
 configure:
-  input_localization: 1  # 0: None, 1: nav_msgs/Odometry
+  input_localization: 0  # 0: None, 1: nav_msgs/Odometry
   
   global_coord_track: false # false: Tracker run in local coordinate, true: Tracker run in global coordinate
   output_local_coord: true  # false: Output global coordinate, true: Output local coordinate

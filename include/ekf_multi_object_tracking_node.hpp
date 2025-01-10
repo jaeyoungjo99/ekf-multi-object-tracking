@@ -194,7 +194,6 @@ private:
 
     inline void CallbackBoundingBoxArray(const jsk_recognition_msgs::BoundingBoxArray::ConstPtr& msg) {
         std::lock_guard<std::mutex> lock(mutex_lidar_objects_);
-
         // i_lidar_objects_.header = msg->header;
         i_lidar_objects_.header.frame_id = msg->header.frame_id;
         str_detection_frame_id_ = msg->header.frame_id;
@@ -222,7 +221,9 @@ private:
             detect_object.dimension.height = bbox.dimensions.z;
 
             // FIXME: Use bbox label as class.
-            detect_object.classification = static_cast<ros_interface::ObjectClass>(bbox.label);
+            int i_class = bbox.label;
+            if(i_class > 4) i_class = 0;
+            detect_object.classification = static_cast<ros_interface::ObjectClass>(i_class);
             detect_object.confidence_score = 0.9; // FIXME: Fill with acture detection confidence score
             // if confidence score is lower than 0.5, algorithm 10x measurement noise
 
@@ -235,8 +236,6 @@ private:
 
     inline void CallbackOdometry(const nav_msgs::Odometry::ConstPtr& msg) {
         if (config_.input_localization != mc_mot::LocalizationType::ODOMETRY) return;
-
-        std::lock_guard<std::mutex> lock(mutex_motion_);
 
         double odom_time = msg->header.stamp.toSec();
 
@@ -277,28 +276,33 @@ private:
 
         // ----- Lidar transform matrix
 
-        // This motion time do nat has to be synced with detection. Only used as delta time.
-        lidar_state_.time_stamp = odom_time;
-        lidar_state_.x = lidar_x;
-        lidar_state_.y = lidar_y;
-        lidar_state_.yaw = motion_dr_state_(2) + cfg_vec_d_ego_to_lidar_rpy_deg_[2] * M_PI / 180.0;
-        lidar_state_.yaw_rate = odom_yaw_rate;
+        {
+            std::lock_guard<std::mutex> lock(mutex_motion_);
 
-        lidar_state_.v_x = vx_global;
-        lidar_state_.v_y = vy_global;
+            // This motion time do nat has to be synced with detection. Only used as delta time.
+             mc_mot::ObjectState lidar_state;
+            lidar_state.time_stamp = odom_time;
+            lidar_state.x = lidar_x;
+            lidar_state.y = lidar_y;
+            lidar_state.yaw = motion_dr_state_(2) + cfg_vec_d_ego_to_lidar_rpy_deg_[2] * M_PI / 180.0;
+            lidar_state.yaw_rate = odom_yaw_rate;
 
-        // lidar_state_.a_x = ax_global;
-        // lidar_state_.a_y = ay_global;
+            lidar_state.v_x = vx_global;
+            lidar_state.v_y = vy_global;
 
-        deque_lidar_state_.push_back(lidar_state_);
+            // lidar_state_.a_x = ax_global;
+            // lidar_state_.a_y = ay_global;
 
-        while (deque_lidar_state_.size() > 1000) {
-            deque_lidar_state_.pop_front();
+            deque_lidar_state_.push_back(lidar_state);
+
+            while (deque_lidar_state_.size() > 100) {
+                deque_lidar_state_.pop_front();
+            }
+
+            b_is_new_motion_input_ = true;
+
+            d_last_dr_time_ = odom_time;
         }
-
-        b_is_new_motion_input_ = true;
-
-        d_last_dr_time_ = odom_time;
     }
 
     // Variables
@@ -354,6 +358,8 @@ private:
 
     std::string cfg_lidar_objects_topic_ = "";
     std::string cfg_odometry_topic_ = "";
+    std::string cfg_output_track_jsk_topic_ = "";
+    std::string cfg_output_track_marker_topic_ = "";
 
     // Algorithm
 

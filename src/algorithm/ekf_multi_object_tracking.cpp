@@ -30,6 +30,10 @@ void EkfMultiObjectTracking::RunUpdate(const mc_mot::Meastructs &measurements) {
     recent_timestamp_ = measurements.time_stamp;
 
     int i_meas_num = measurements.meas.size();
+    if(i_meas_num > MAX_TRACKS){
+        std::cout<<"[RunUpdate] Too Many Measurement: "<< i_meas_num << std::endl;
+        i_meas_num = MAX_TRACKS;
+    }
     Eigen::MatrixXd cost_matrix(i_meas_num, MAX_TRACKS);
     cost_matrix.setConstant(std::numeric_limits<double>::max());
 
@@ -67,6 +71,7 @@ void EkfMultiObjectTracking::RunUpdate(const mc_mot::Meastructs &measurements) {
     MatchPairs(cost_matrix, assignment, assignment_track);
 
     int init_count = 0;
+    int asso_count = 0;
     // Update associated tracks and add new tracks based on matching results
     for (int meas_idx = 0; meas_idx < i_meas_num; ++meas_idx) {
         int track_idx = assignment[meas_idx];
@@ -79,6 +84,8 @@ void EkfMultiObjectTracking::RunUpdate(const mc_mot::Meastructs &measurements) {
             if (all_tracks_[track_idx].age >= 3 && all_tracks_[track_idx].countDetectionNum() >= 2) {
                 all_tracks_[track_idx].is_confirmed = true;
             }
+
+            asso_count++;
         }
         else {
             // Add new measurement not in any track
@@ -129,7 +136,7 @@ void EkfMultiObjectTracking::RunUpdate(const mc_mot::Meastructs &measurements) {
         if (track.is_init) init_track_num++;
         if (track.is_confirmed) confirmed_track_num++;
     }
-    std::cout << "[RunUpdate] Detection: " << i_meas_num << " New: " << init_count << " Deleted: " << i_deleted_num << std::endl;
+    std::cout << "[RunUpdate] Det: " << i_meas_num << " Asso: "<< asso_count << " New: " << init_count << " Deleted: " << i_deleted_num << std::endl;
     std::cout << "[RunUpdate] Asso: " << asso_track_num << " Inited: " << init_track_num << " Confirmed: " << confirmed_track_num
               << std::endl;
 
@@ -394,10 +401,10 @@ void EkfMultiObjectTracking::InitTrack(mc_mot::TrackStruct &track, const mc_mot:
     track.dimension = measurement.dimension;
     track.class_score_arr[mc_mot::ObjectClass(measurement.classification)] = 1.0;
     track.object_z = measurement.state.z;
-    track.age = 1;
+    track.age = 0;
 
     track.is_init = true;
-    track.is_associated = true;
+    track.is_associated = false; // TODO:
 
     track.updateDetectionCount(true);
 }
@@ -442,6 +449,8 @@ void EkfMultiObjectTracking::MatchPairs(const Eigen::MatrixXd &cost_matrix, std:
     }
 }
 
+// Purpose: To find an available new track ID.
+// If no empty track ID is found after a full loop, the current track ID will be removed and replaced as a last resort.
 void EkfMultiObjectTracking::UpdateTrackId() {
     int i_cur_track_id = cur_track_id_;
     do {

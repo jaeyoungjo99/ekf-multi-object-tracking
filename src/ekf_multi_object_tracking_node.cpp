@@ -45,17 +45,26 @@ void EkfMultiObjectTrackingNode::Init() {
         ROS_ERROR_STREAM("Failed to get param: /topic_name/odometry");
         cfg_odometry_topic_ = "/odometry";
     }
+    if (!nh.getParam("/topic_name/output_track_jsk", cfg_output_track_jsk_topic_)) {
+        ROS_ERROR_STREAM("Failed to get param: /topic_name/output_track_jsk");
+        cfg_output_track_jsk_topic_ = "/output_track_jsk";
+    }
+    if (!nh.getParam("/topic_name/output_track_marker", cfg_output_track_marker_topic_)) {
+        ROS_ERROR_STREAM("Failed to get param: /topic_name/output_track_marker");
+        cfg_output_track_marker_topic_ = "/output_track_marker";
+    }
 
     // Subscriber init
     s_lidar_objects_ =
             nh.subscribe(cfg_lidar_objects_topic_, 10, &EkfMultiObjectTrackingNode::CallbackBoundingBoxArray, this);
 
+    // Localization source subscriber
     if (config_.input_localization == mc_mot::LocalizationType::ODOMETRY)
         s_odometry_ = nh.subscribe(cfg_odometry_topic_, 10, &EkfMultiObjectTrackingNode::CallbackOdometry, this);
 
-    // p_track_objects_ = nh.advertise<autohyu_msgs::TrackObjects>("/app/perc/track_objects", 10);
-    p_all_track_ = nh.advertise<jsk_recognition_msgs::BoundingBoxArray>("app/perc/jsk_all_track", 10);
-    p_all_track_info_ = nh.advertise<visualization_msgs::MarkerArray>("app/perc/vis_all_track", 10);
+    // Publisher init
+    p_all_track_ = nh.advertise<jsk_recognition_msgs::BoundingBoxArray>(cfg_output_track_jsk_topic_, 10);
+    p_all_track_info_ = nh.advertise<visualization_msgs::MarkerArray>(cfg_output_track_marker_topic_, 10);
     p_ego_stl_ = nh.advertise<visualization_msgs::Marker>("app/perc/vis_ego_stl", 10);
 
     // algorithm init
@@ -84,10 +93,19 @@ void EkfMultiObjectTrackingNode::Run() {
         }
     }
 
-    mc_mot::ObjectState lidar_state;
-    {
+    
+    std::deque<mc_mot::ObjectState> deque_lidar_state;
+    if(config_.input_localization != mc_mot::LocalizationType::NONE){
         std::lock_guard<std::mutex> lock(mutex_motion_);
-        lidar_state = lidar_state_;
+        if (deque_lidar_state_.size() < 1) return;
+
+        mc_mot::ObjectState lidar_state = deque_lidar_state_.back();
+
+        if(lidar_objects.header.stamp - lidar_state.time_stamp > 1.0){
+            ROS_WARN_STREAM("LiDAR STATE is Old!");
+            deque_lidar_state_.clear();
+        }
+        deque_lidar_state = deque_lidar_state_;
 
         // Motion Update with Input Localization
         if (b_is_new_motion_input_ == true && b_is_track_init_ == true) {
@@ -145,43 +163,39 @@ void EkfMultiObjectTrackingNode::Run() {
         if(b_is_track_init_ == false){
             b_is_track_init_ = true;
             last_predicted_time_ = lidar_objects.header.stamp;
+            ROS_INFO("Init Tracker");
         }
     }
 
-
+    
     if (b_is_new_track_objects_ == true) {
         // ----- Output -----
         mc_mot::TrackStructs mot_track_structs = mcot_algorithm_.GetTrackResults();
 
         std::string o_frame_id;
         if (config_.input_localization != mc_mot::LocalizationType::NONE) {
-            // if (config_.output_local_coord == false) { // output world coordinate
-            //     o_frame_id = "world";
-            //     VisualizeTrackObjects(mot_track_structs, o_frame_id);
-            // }
-            // else { // output velodyne coordinate
-                std::deque<mc_mot::ObjectState> deque_lidar_state;
-                {
-                    std::lock_guard<std::mutex> lock(mutex_motion_);
-                    deque_lidar_state = deque_lidar_state_;
-                }
-                mc_mot::ObjectState synced_lidar_state =
-                        GetSyncedLidarState(mot_track_structs.time_stamp, deque_lidar_state);
-                ConvertTrackGlobalToLocal(mot_track_structs, synced_lidar_state);
+            if(deque_lidar_state.size() <= 1){
+                ROS_WARN_STREAM("CANNOT CONVERT TRACK TO LOCAL. NO LIDAR STATES");
+                b_is_new_track_objects_ = false;
+                return;
+            }
+            mc_mot::ObjectState synced_lidar_state =
+                    GetSyncedLidarState(mot_track_structs.time_stamp, deque_lidar_state);
+            ConvertTrackGlobalToLocal(mot_track_structs, synced_lidar_state);
 
-                o_frame_id = str_detection_frame_id_;
-                VisualizeTrackObjects(mot_track_structs, o_frame_id);
-            // }
+            o_frame_id = str_detection_frame_id_;
+            VisualizeTrackObjects(mot_track_structs, o_frame_id);
         }
         else { // no localization. output velodyne coordinate
             o_frame_id = str_detection_frame_id_;
             VisualizeTrackObjects(mot_track_structs, o_frame_id);
         }
     }
+
+
 }
 
 void EkfMultiObjectTrackingNode::Publish() {
-    // std::lock_guard<std::mutex> lock(mutex_lidar_objects_);
     if (b_is_new_track_objects_ == true) {
         std::cout<<"Publish Track Objects: " << o_jsk_tracked_objects_.boxes.size()<<std::endl;
         
@@ -190,14 +204,13 @@ void EkfMultiObjectTrackingNode::Publish() {
         p_ego_stl_.publish(o_vis_ego_stl_);
 
         b_is_new_track_objects_ = false;
-
     }
 }
 
 void EkfMultiObjectTrackingNode::Terminate() { ROS_INFO_STREAM("Terminate Node"); }
 
 void EkfMultiObjectTrackingNode::ProcessYAML() {
-    ros::NodeHandle nh; // NodeHandle with private namespace
+    ros::NodeHandle nh;
 
     // Read parameters from YAML
     int i_input_localization = 0;
@@ -868,10 +881,16 @@ void EkfMultiObjectTrackingNode::MainLoop() {
     while (ros::ok()) {
 
         // Run algorithm
+        auto start_time = std::chrono::high_resolution_clock::now(); // 시작 시간 기록
+
         Run();
 
         // Publish topics
         Publish();
+        auto end_time = std::chrono::high_resolution_clock::now(); // 종료 시간 기록
+        std::chrono::duration<double, std::milli> elapsed_time = end_time - start_time; // 경과 시간 계산
+        std::cout << "Execution time: " << std::fixed << std::setprecision(3) 
+                << elapsed_time.count() << " ms" << std::endl; // 소수점 3자리까지 출력
 
         loop_rate.sleep();
     }
@@ -880,11 +899,7 @@ int main(int argc, char** argv) {
     std::string node_name = "ekf_multi_object_tracking";
     ros::init(argc, argv, node_name);
 
-    double task_period = 0.01;
-    double task_rate = 1.0/task_period;
     EkfMultiObjectTrackingNode main_task;
-
-    std::cout<<"Period: "<< task_period << " Rate: "<< task_rate<<std::endl;
 
     main_task.Exec(4);
 
